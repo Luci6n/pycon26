@@ -1,0 +1,42 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+backend/*.sqlite3
+
+# Node and Vite
+node_modules/
+dist/
+.vite/
+
+# Local runtime logs
+*.log
+api-server*.log
+api-server*.err.log
+dev-server*.log
+dev-server*.err.log
+
+# Local uploads and ad-hoc test files
+test.pdf
+uploads/
+tmp/
+temp/
+
+# Agent-local tooling
+.agents/
+skills-lock.json
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
