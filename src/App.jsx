@@ -1025,7 +1025,7 @@ function App() {
 
         {schedule && !isLoggedIn ? (
           <section className="panel linkedin-share">
-            <p className="schedule-hint">Sign in to save your plan, track progress, and share to LinkedIn.</p>
+            <p className="schedule-hint">Sign in to save your schedule, track progress, and share to LinkedIn.</p>
           </section>
         ) : null}
           </>

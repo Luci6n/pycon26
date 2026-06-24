@@ -80,7 +80,7 @@ function SchedulePlanner({ onGenerate, status, error, hasResources }) {
         <CalendarClock size={20} />
         <div>
           <h2>Arrange my time</h2>
-          <p>Pick when you are free and how you like to learn. We fit the resources into a {horizonDays}-day plan.</p>
+          <p>Pick when you are free and how you like to learn. We turn your plan's learning resources into a {horizonDays}-day study schedule.</p>
         </div>
       </header>
 

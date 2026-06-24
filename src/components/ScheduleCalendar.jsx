@@ -48,7 +48,7 @@ function ScheduleCalendar({ schedule, progress, isSaved, canSave, onExport, onSa
     <section className="panel schedule-result" id="schedule-result" aria-live="polite">
       <header className="schedule-result-head">
         <div>
-          <h3>Your learning plan</h3>
+          <h3>Your study schedule</h3>
           <p>{schedule.summary}</p>
         </div>
         <div className="schedule-actions">
@@ -56,7 +56,7 @@ function ScheduleCalendar({ schedule, progress, isSaved, canSave, onExport, onSa
             <Download size={16} /> Add to calendar (.ics)
           </button>
           <button type="button" className="secondary-button" onClick={onSave} disabled={!canSave || isSaved || saveStatus === "loading"}>
-            <Save size={16} /> {isSaved ? "Saved" : saveStatus === "loading" ? "Saving..." : "Save plan"}
+            <Save size={16} /> {isSaved ? "Saved" : saveStatus === "loading" ? "Saving..." : "Save schedule"}
           </button>
         </div>
       </header>
@@ -71,7 +71,7 @@ function ScheduleCalendar({ schedule, progress, isSaved, canSave, onExport, onSa
       )}
 
       {!isSaved && (
-        <p className="schedule-hint">Save the plan to track progress and mark sessions complete.</p>
+        <p className="schedule-hint">Save the schedule to track progress and mark sessions complete.</p>
       )}
 
       <div className="schedule-weeks">
