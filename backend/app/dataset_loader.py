@@ -8,6 +8,12 @@ from openpyxl import load_workbook
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATASET_DIR = PROJECT_ROOT / "datasets"
 
+DATA_SOURCE = {
+    "name": "SkillsFuture Jobs-Skills Dataset",
+    "release": "Q2 2026",
+    "note": "Uses the official SkillsFuture role, TSC mapping, and unique skill vocabulary Excel files.",
+}
+
 FRAMEWORK_FILE = DATASET_DIR / "jobsandskills-skillsfuture-skills-framework-dataset.xlsx"
 MAPPING_FILE = DATASET_DIR / "jobsandskills-skillsfuture-tsc-to-unique-skills-mapping.xlsx"
 UNIQUE_SKILLS_FILE = DATASET_DIR / "jobsandskills-skillsfuture-unique-skills-list.xlsx"

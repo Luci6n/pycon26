@@ -7,8 +7,6 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .dataset_loader import get_official_role
-from .scoring import get_role
-from .scoring import UnknownRoleError
 
 
 def analyze_evidence(
@@ -47,13 +45,10 @@ def analyze_evidence(
 
 
 def resolve_target_role(target_role_id: str) -> dict:
-    try:
-        return get_role(target_role_id)
-    except UnknownRoleError:
-        official_role = get_official_role(target_role_id)
-        if official_role:
-            return official_role
-        raise
+    official_role = get_official_role(target_role_id)
+    if official_role:
+        return official_role
+    raise ValueError(target_role_id)
 
 
 def analyze_resume(target: dict, resume_name: str | None, resume_text: str | None) -> dict:

@@ -15,12 +15,11 @@ from .auth import (
     save_roadmap,
     user_from_token,
 )
-from .data import DATA_SOURCE, ROLES
-from .dataset_loader import dataset_summary, get_official_role, official_role_profiles, search_official_roles
+from .dataset_loader import DATA_SOURCE, dataset_summary, get_official_role, official_role_profiles, search_official_roles
 from .enrichment import search_learning_resources, validate_market_demand
 from .evidence import analyze_evidence
 from .resume_parser import extract_resume_text
-from .scoring import UnknownRoleError, analyze_profiles, analyze_transition, get_role
+from .scoring import analyze_profiles
 
 app = FastAPI(title="PathForge AI API", version="0.1.0")
 
@@ -37,12 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-class AnalyzeRequest(BaseModel):
-    current_role_id: str = Field(..., min_length=1)
-    target_role_id: str = Field(..., min_length=1)
-    profile_skills: list[str] = Field(default_factory=list)
 
 
 class EvidenceRequest(BaseModel):
@@ -116,11 +109,6 @@ def current_admin(authorization: str | None = Header(default=None)) -> dict:
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "service": "pathforge-api"}
-
-
-@app.get("/api/roles")
-def get_roles() -> dict:
-    return {"data_source": DATA_SOURCE, "roles": ROLES}
 
 
 @app.post("/api/auth/register")
@@ -221,21 +209,6 @@ def post_dataset_analyze(payload: OfficialAnalyzeRequest) -> dict:
     return result
 
 
-@app.post("/api/analyze")
-def post_analyze(payload: AnalyzeRequest) -> dict:
-    try:
-        current = get_role(payload.current_role_id)
-        target = get_role(payload.target_role_id)
-        alternatives = [
-            role
-            for role in ROLES
-            if role["id"] not in {current["id"], target["id"]} and role.get("required")
-        ]
-        return analyze_profiles(current, target, alternatives=alternatives, profile_skills=payload.profile_skills)
-    except UnknownRoleError as error:
-        raise HTTPException(status_code=404, detail=f"Unknown role: {error}") from error
-
-
 @app.post("/api/enrich/resources")
 def post_resource_search(payload: ResourceSearchRequest) -> dict:
     return search_learning_resources(
@@ -280,5 +253,5 @@ def post_evidence(payload: EvidenceRequest) -> dict:
             market_scan_enabled=payload.market_scan_enabled,
             fetch_repository=payload.fetch_repository,
         )
-    except UnknownRoleError as error:
+    except ValueError as error:
         raise HTTPException(status_code=404, detail=f"Unknown role: {error}") from error

@@ -1,31 +1,6 @@
 from __future__ import annotations
 
-from .data import ROLES, role_index
-
 DEFAULT_WEIGHT = 50
-
-
-class UnknownRoleError(ValueError):
-    pass
-
-
-def get_role(role_id: str) -> dict:
-    role = role_index().get(role_id)
-    if not role:
-        raise UnknownRoleError(role_id)
-    return role
-
-
-def analyze_transition(current_role_id: str, target_role_id: str) -> dict:
-    current = get_role(current_role_id)
-    target = get_role(target_role_id)
-    alternatives = [
-        role
-        for role in ROLES
-        if role["id"] not in {current["id"], target["id"]} and role.get("required")
-    ]
-
-    return analyze_profiles(current, target, alternatives=alternatives)
 
 
 def analyze_profiles(
