@@ -20,6 +20,9 @@ import {
 } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  completeSession,
+  createSharePage,
+  downloadScheduleIcs,
   extractResumeFromApi,
   fetchAnalysisFromApi,
   fetchAdminRoadmaps,
@@ -29,10 +32,18 @@ import {
   fetchResourceEnrichment,
   fetchRolesFromApi,
   fetchSavedRoadmaps,
+  fetchScheduleProgress,
+  generateLinkedInDraft,
+  generateSchedule,
   loginUser,
   registerUser,
   saveRoadmap,
+  saveSchedule,
 } from "./utils/api.js";
+import SchedulePlanner from "./components/SchedulePlanner.jsx";
+import ScheduleCalendar from "./components/ScheduleCalendar.jsx";
+import ReflectionModal from "./components/ReflectionModal.jsx";
+import LinkedInShare from "./components/LinkedInShare.jsx";
 
 const emptyLiveEvidence = {
   status: "idle",
@@ -109,6 +120,20 @@ function App() {
   const [authMessage, setAuthMessage] = useState("");
   const [savedRoadmaps, setSavedRoadmaps] = useState([]);
   const [adminSummary, setAdminSummary] = useState(null);
+  const [schedule, setSchedule] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState(null);
+  const [scheduleStatus, setScheduleStatus] = useState("idle");
+  const [scheduleError, setScheduleError] = useState("");
+  const [savedScheduleId, setSavedScheduleId] = useState(null);
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const [scheduleProgress, setScheduleProgress] = useState(null);
+  const [reflectionSession, setReflectionSession] = useState(null);
+  const [reflectionStatus, setReflectionStatus] = useState("idle");
+  const [reflectionError, setReflectionError] = useState("");
+  const [linkedInCaption, setLinkedInCaption] = useState(null);
+  const [linkedInSourceCount, setLinkedInSourceCount] = useState(null);
+  const [linkedInStatus, setLinkedInStatus] = useState("idle");
+  const [shareUrl, setShareUrl] = useState("");
   const skipNextAnalysisReset = useRef(false);
   const activeAnalysisRun = useRef(0);
 
@@ -496,6 +521,158 @@ function App() {
     }
   };
 
+  const schedulableResources = useMemo(() => {
+    const categories = liveEvidence.resources?.categories ?? [];
+    const topSkill = result?.missing?.[0]?.name || result?.target?.title || "";
+    return categories.flatMap((category) =>
+      (category.results ?? []).map((item) => ({
+        type: item.type || category.type,
+        title: item.title,
+        url: item.url,
+        skill: topSkill,
+      }))
+    );
+  }, [liveEvidence.resources, result]);
+
+  const hasSchedulableResources = schedulableResources.length > 0;
+  const isLoggedIn = Boolean(session?.token);
+
+  const refreshProgress = async (scheduleId) => {
+    if (!session?.token) return;
+    try {
+      const progress = await fetchScheduleProgress(session.token, scheduleId);
+      setScheduleProgress(progress);
+    } catch {
+      // Progress is best-effort; ignore transient failures.
+    }
+  };
+
+  const handleGenerateSchedule = async (formData) => {
+    setScheduleStatus("loading");
+    setScheduleError("");
+    setScheduleForm(formData);
+    setShareUrl("");
+    try {
+      const data = await generateSchedule({
+        ...formData,
+        target_role: result?.target?.title ?? null,
+        target_role_id: result?.target?.id ?? null,
+        resources: schedulableResources,
+        skills: (result?.missing ?? []).map((skill) => ({
+          name: skill.name,
+          urgency: skill.urgency,
+          demand: skill.demand,
+        })),
+      });
+      setSchedule(data);
+      setSavedScheduleId(null);
+      setSaveStatus("idle");
+      setScheduleProgress(null);
+      setScheduleStatus("ready");
+    } catch (error) {
+      setScheduleStatus("error");
+      setScheduleError(error instanceof Error ? error.message : "Could not arrange your time.");
+    }
+  };
+
+  const handleExportIcs = async () => {
+    if (!schedule?.sessions?.length) return;
+    try {
+      const title = `PathForge plan - ${result?.target?.title ?? "Learning"}`;
+      await downloadScheduleIcs(title, schedule.sessions);
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : "Calendar export failed.");
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!session?.token || !schedule || !scheduleForm) return;
+    setSaveStatus("loading");
+    setScheduleError("");
+    try {
+      const data = await saveSchedule(session.token, {
+        title: `${result?.target?.title ?? "Learning"} plan`,
+        target_role_id: result?.target?.id ?? null,
+        horizon_days: scheduleForm.horizon_days,
+        timezone: scheduleForm.timezone,
+        preferences: scheduleForm.preferences,
+        availability: scheduleForm.availability,
+        sessions: schedule.sessions,
+      });
+      const saved = data.schedule;
+      setSchedule((prev) => ({ ...prev, id: saved.id, sessions: saved.sessions }));
+      setSavedScheduleId(saved.id);
+      setSaveStatus("saved");
+      await refreshProgress(saved.id);
+    } catch (error) {
+      setSaveStatus("error");
+      setScheduleError(error instanceof Error ? error.message : "Could not save your plan.");
+    }
+  };
+
+  const handleSubmitReflection = async (content) => {
+    if (!session?.token || !reflectionSession) return;
+    setReflectionStatus("loading");
+    setReflectionError("");
+    try {
+      const data = await completeSession(session.token, reflectionSession.id, content);
+      const updated = data.session;
+      setSchedule((prev) =>
+        prev
+          ? {
+              ...prev,
+              sessions: prev.sessions.map((item) =>
+                item.id === updated.id ? { ...item, status: updated.status } : item
+              ),
+            }
+          : prev
+      );
+      setReflectionSession(null);
+      setReflectionStatus("idle");
+      if (savedScheduleId) await refreshProgress(savedScheduleId);
+    } catch (error) {
+      setReflectionStatus("error");
+      setReflectionError(error instanceof Error ? error.message : "Could not save reflection.");
+    }
+  };
+
+  const handleGenerateCaption = async () => {
+    if (!session?.token) {
+      setLinkedInStatus("error");
+      return;
+    }
+    setLinkedInStatus("loading");
+    try {
+      const data = await generateLinkedInDraft(session.token, {
+        schedule_id: savedScheduleId,
+        target_role: result?.target?.title ?? null,
+      });
+      setLinkedInCaption(data.caption ?? "");
+      setLinkedInSourceCount(data.source_count ?? 0);
+      setLinkedInStatus("idle");
+    } catch (error) {
+      setLinkedInStatus("error");
+    }
+  };
+
+  const handleCreateShare = async () => {
+    if (!session?.token) return;
+    setLinkedInStatus("loading");
+    try {
+      const completed = (schedule?.sessions ?? []).filter((item) => item.status === "completed");
+      const data = await createSharePage(session.token, {
+        title: `My progress toward ${result?.target?.title ?? "my goal"}`,
+        target_role: result?.target?.title ?? null,
+        completed_count: completed.length,
+        highlights: completed.slice(0, 5).map((item) => `Completed ${item.resource_title}`),
+      });
+      setShareUrl(data.share_url);
+      setLinkedInStatus("idle");
+    } catch (error) {
+      setLinkedInStatus("error");
+    }
+  };
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
@@ -811,6 +988,44 @@ function App() {
             progressKey={`pathforge-roadmap-progress:${currentRole || result.current.id}:${targetRole || result.target.id}`}
           />
         </section>
+
+        <SchedulePlanner
+          onGenerate={handleGenerateSchedule}
+          status={scheduleStatus}
+          error={scheduleError}
+          hasResources={hasSchedulableResources}
+        />
+
+        {schedule ? (
+          <ScheduleCalendar
+            schedule={schedule}
+            progress={scheduleProgress}
+            isSaved={Boolean(savedScheduleId)}
+            canSave={isLoggedIn}
+            saveStatus={saveStatus}
+            onExport={handleExportIcs}
+            onSave={handleSaveSchedule}
+            onMarkDone={setReflectionSession}
+          />
+        ) : null}
+
+        {schedule && isLoggedIn ? (
+          <LinkedInShare
+            caption={linkedInCaption}
+            sourceCount={linkedInSourceCount}
+            status={linkedInStatus}
+            shareUrl={shareUrl}
+            onCaptionChange={setLinkedInCaption}
+            onGenerateCaption={handleGenerateCaption}
+            onCreateShare={handleCreateShare}
+          />
+        ) : null}
+
+        {schedule && !isLoggedIn ? (
+          <section className="panel linkedin-share">
+            <p className="schedule-hint">Sign in to save your plan, track progress, and share to LinkedIn.</p>
+          </section>
+        ) : null}
           </>
         ) : (
           <section className="panel empty-state-panel" aria-live="polite">
@@ -823,6 +1038,19 @@ function App() {
         )}
 
       </main>
+      {reflectionSession ? (
+        <ReflectionModal
+          session={reflectionSession}
+          status={reflectionStatus}
+          error={reflectionError}
+          onSubmit={handleSubmitReflection}
+          onClose={() => {
+            setReflectionSession(null);
+            setReflectionStatus("idle");
+            setReflectionError("");
+          }}
+        />
+      ) : null}
     </div>
   );
 }

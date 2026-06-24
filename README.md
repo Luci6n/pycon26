@@ -13,6 +13,19 @@ The app was built for the PyCon SG 2026 hackathon, Job & Skills track.
 - Searches learning resources through Exa when `EXA_API_KEY` is configured.
 - Searches current job postings through Apify when `APIFY_API_TOKEN` and actor IDs are configured.
 - Lets signed-in users save and reload roadmaps. Login is optional for analysis.
+- **Arrange my time:** turns the learning resources into a 30/60-day study schedule fitted to the user's free-time slots and content-type preferences, then exports a single `.ics` file that imports into both Apple Calendar and Google Calendar.
+- **Proof of learning:** a session only counts as done once the user writes what they learned; progress is tracked per schedule.
+- **LinkedIn sharing:** generates a post from verified learnings and shares it through LinkedIn's own composer via a no-OAuth share link (full OAuth auto-publish is scaffolded for later).
+
+## Learning Scheduler & LinkedIn Sharing
+
+The scheduler is **hybrid**: a deterministic engine (`backend/app/scheduling.py`) guarantees valid, non-overlapping placement into the user's free slots, and an optional, provider-agnostic LLM layer (`backend/app/llm.py`) refines wording when a key is configured. The product default model is **GPT 5.5** (OpenAI); set `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`) to enable it. With no key set, the engine and a template caption are used — nothing breaks.
+
+Calendar export is a single `.ics` file (`backend/app/calendar_export.py`, RFC 5545 with recurring-friendly events) because it is the only universal, no-OAuth path that works for both Apple and Google Calendar; Apple exposes no server push API.
+
+LinkedIn has no API that injects a draft into its own composer, so the review step happens in-app and the user posts in LinkedIn's composer via a `share-offsite` link to a public progress page (`GET /share/{token}`) that carries OpenGraph tags. Set `APP_PUBLIC_BASE_URL` so the share links are absolute. The OAuth + `/v2/ugcPosts` auto-publish path is scaffolded behind `LINKEDIN_CLIENT_ID/SECRET/REDIRECT_URI` and requires a verified LinkedIn Company Page.
+
+Key endpoints: `POST /api/schedule/generate`, `POST /api/schedule/export.ics`, `POST /api/schedules`, `GET /api/schedules/{id}/progress`, `POST /api/sessions/{id}/complete`, `POST /api/linkedin/draft`, `POST /api/share/create`.
 
 ## Tech Stack
 
@@ -20,8 +33,20 @@ The app was built for the PyCon SG 2026 hackathon, Job & Skills track.
 - Backend: FastAPI, Python 3.11
 - Dataset parsing: openpyxl
 - Resume parsing: PyMuPDF
-- Tests: Python unittest through `npm run test:backend`
-- External services: Exa, Apify, GitHub API
+- Tests: Python unittest through `npm run test:backend`; Playwright E2E through `npm run test:e2e`
+- External services: Exa, Apify, GitHub API, optional OpenAI/Anthropic (scheduler/caption refinement)
+
+### Running on macOS/Linux
+
+The `api` and `test:backend` npm scripts use Windows venv paths. On macOS/Linux run the backend and tests directly:
+
+```bash
+python3 -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt
+.venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8010   # backend
+.venv/bin/python -m unittest discover backend/tests                              # backend tests
+npm run dev                                                                      # frontend
+npm run test:e2e                                                                 # Playwright E2E (auto-starts both servers)
+```
 
 ## Project Structure
 

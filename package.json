@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "api": ".venv\\Scripts\\python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8010",
     "test:backend": ".venv\\Scripts\\python -m unittest discover backend/tests",
+    "test:e2e": "playwright test",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1"
   },
@@ -19,6 +20,7 @@
     "vite": "^6.3.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "playwright-core": "^1.61.0"
   }
 }

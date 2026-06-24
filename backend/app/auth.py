@@ -71,6 +71,63 @@ def initialise_schema(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+
+        CREATE TABLE IF NOT EXISTS learning_schedules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            target_role_id TEXT,
+            horizon_days INTEGER NOT NULL,
+            preferences_json TEXT NOT NULL,
+            availability_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS schedule_sessions (
+            id TEXT PRIMARY KEY,
+            schedule_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            resource_title TEXT NOT NULL,
+            resource_url TEXT,
+            resource_type TEXT NOT NULL,
+            skill TEXT,
+            goal TEXT,
+            week_index INTEGER NOT NULL DEFAULT 0,
+            start_utc TEXT NOT NULL,
+            end_utc TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'planned',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (schedule_id) REFERENCES learning_schedules(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS learning_reflections (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES schedule_sessions(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS share_pages (
+            token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS linkedin_tokens (
+            user_id TEXT PRIMARY KEY,
+            access_token TEXT NOT NULL,
+            member_urn TEXT,
+            expires_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
         """
     )
     connection.commit()

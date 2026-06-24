@@ -33,8 +33,14 @@ temp/
 
 # Agent-local tooling
 .agents/
+.omc/
 .worktrees/
 skills-lock.json
+
+# Playwright E2E artifacts
+test-results/
+playwright-report/
+.playwright/
 
 # OS and editor noise
 .DS_Store
