@@ -3,6 +3,7 @@ import {
   BookOpen,
   Brain,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Clock3,
   ExternalLink,
@@ -13,12 +14,13 @@ import {
   Upload,
   Route,
   RotateCcw,
+  Search,
   ShieldCheck,
   SkipForward,
   Sparkles,
   X,
 } from "lucide-react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   completeSession,
   createSharePage,
@@ -959,7 +961,7 @@ function App() {
 
         <section className="bottom-grid" id="routes">
           <div className="panel graph-panel">
-            <PanelHeading icon={Layers3} title="Skill graph" subtitle="Role-to-skill relationships for the selected path." />
+            <PanelHeading icon={Layers3} title="Skill graph" subtitle="Drag nodes to rearrange the map. Press any node for details." />
             <SkillGraph result={result} />
           </div>
 
@@ -1602,16 +1604,16 @@ function LiveEvidencePanel({ liveEvidence, apiEvidence }) {
         ) : resourceCategories.length ? (
           <div className="resource-category-grid">
             {resourceCategories.map((category) => (
-              <article className="resource-category-card" key={category.type}>
+              <article className="resource-category-card" key={category.type ?? category.label}>
                 <h3>{category.label}</h3>
                 <div className="resource-links resource-column-list scroll-list">
                   {category.results.map((item) => (
                     item.url ? (
-                      <a href={item.url} key={`${category.type}-${item.url}`} target="_blank" rel="noreferrer">
+                      <a href={item.url} key={`${category.type ?? category.label}-${item.url}`} target="_blank" rel="noreferrer">
                         <span>{item.title}</span>
                       </a>
                     ) : (
-                      <div className="resource-link-static" key={`${category.type}-${item.title}`}>
+                      <div className="resource-link-static" key={`${category.type ?? category.label}-${item.title}`}>
                         <span>{item.title}</span>
                       </div>
                     )
@@ -1724,19 +1726,170 @@ function JobSkeleton() {
 }
 
 function RoleSelect({ label, name, value, onChange, disabledId, roles, placeholder }) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const inputRef = useRef(null);
+  const deferredQuery = useDeferredValue(query);
+  const selectedRole = useMemo(() => roles.find((role) => role.id === value), [roles, value]);
+  const roleSearch = useMemo(() => {
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
+    const visibleLimit = 80;
+    const items = [];
+    let total = 0;
+
+    for (const role of roles) {
+      if (role.id === disabledId) {
+        continue;
+      }
+
+      const haystack = `${role.title} ${role.sector ?? ""} ${role.track ?? ""}`.toLowerCase();
+      if (!normalizedQuery || haystack.includes(normalizedQuery)) {
+        total += 1;
+        if (items.length < visibleLimit) {
+          items.push(role);
+        }
+      }
+    }
+
+    return {
+      items,
+      total,
+      limited: total > items.length,
+    };
+  }, [roles, disabledId, deferredQuery]);
+
+  const openPicker = () => {
+    setIsOpen(true);
+    setHighlightedIndex(0);
+  };
+
+  const chooseRole = (role) => {
+    onChange(role.id);
+    setQuery("");
+    setIsOpen(false);
+    setHighlightedIndex(0);
+  };
+
+  const clearRole = () => {
+    onChange("");
+    setQuery("");
+    setHighlightedIndex(0);
+  };
+
+  const highlightedRole = roleSearch.items[highlightedIndex];
+
+  useEffect(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+    }
+  }, [isOpen]);
+
   return (
-    <label className={value ? "role-select" : "role-select empty"}>
+    <label className={value ? "role-select role-picker" : "role-select role-picker empty"}>
       <span>{label}</span>
-      <select name={name} value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="" disabled>
-          {placeholder}
-        </option>
-        {roles.map((role) => (
-          <option key={role.id} value={role.id} disabled={role.id === disabledId}>
-            {role.sector ? `${role.title} - ${role.sector}` : role.title}
-          </option>
-        ))}
-      </select>
+      <div
+        className={isOpen ? "role-combobox open" : "role-combobox"}
+        role={selectedRole && !isOpen ? "button" : undefined}
+        tabIndex={selectedRole && !isOpen ? 0 : undefined}
+        aria-label={selectedRole && !isOpen ? `${label}: ${selectedRole.title}. Change role` : undefined}
+        onMouseDown={(event) => {
+          if (selectedRole && !isOpen) {
+            event.preventDefault();
+          }
+          openPicker();
+        }}
+        onKeyDown={(event) => {
+          if (!selectedRole || isOpen) {
+            return;
+          }
+
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openPicker();
+          }
+        }}
+      >
+        <Search className="role-search-icon" size={16} aria-hidden="true" />
+        {selectedRole && !isOpen ? (
+          <div className="selected-role-value">
+            <strong>{selectedRole.title}</strong>
+            {selectedRole.sector ? <small>{selectedRole.sector}</small> : null}
+          </div>
+        ) : (
+          <input
+            ref={inputRef}
+            name={name}
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onFocus={openPicker}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setIsOpen(true);
+              setHighlightedIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" && roleSearch.items.length) {
+                event.preventDefault();
+                setIsOpen(true);
+                setHighlightedIndex((index) => Math.min(index + 1, roleSearch.items.length - 1));
+              }
+
+              if (event.key === "ArrowUp" && roleSearch.items.length) {
+                event.preventDefault();
+                setHighlightedIndex((index) => Math.max(index - 1, 0));
+              }
+
+              if (event.key === "Enter" && highlightedRole) {
+                event.preventDefault();
+                chooseRole(highlightedRole);
+              }
+
+              if (event.key === "Escape") {
+                setIsOpen(false);
+                setQuery("");
+              }
+
+              if (event.key === "Backspace" && !query && selectedRole) {
+                clearRole();
+              }
+            }}
+            onBlur={() => setIsOpen(false)}
+            placeholder={selectedRole ? "Search to replace role..." : placeholder}
+          />
+        )}
+        <ChevronDown className="role-chevron" size={17} aria-hidden="true" />
+      </div>
+
+      {isOpen ? (
+        <div className="role-suggestion-list" role="listbox" aria-label={`${label} options`}>
+          <div className="role-suggestion-meta">
+            {roleSearch.total
+              ? `${roleSearch.total.toLocaleString()} matching role${roleSearch.total === 1 ? "" : "s"}${roleSearch.limited ? " - keep typing to narrow" : ""}`
+              : "No matching roles"}
+          </div>
+          {roleSearch.items.map((role, index) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={role.id === value || highlightedIndex === index}
+              className={highlightedIndex === index ? "role-suggestion active" : "role-suggestion"}
+              key={role.id}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                chooseRole(role);
+              }}
+              onMouseEnter={() => setHighlightedIndex(index)}
+            >
+              <strong>{role.title}</strong>
+              <span>
+                {[role.sector, role.track, `${role.skill_count ?? role.skills?.length ?? 0} skills`].filter(Boolean).join(" · ")}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </label>
   );
 }
@@ -2192,48 +2345,444 @@ function inferRoadmapArtifact(task, relatedSkill, targetTitle) {
   return `${relatedSkill} proof point`;
 }
 
+const skillDescriptionOverrides = {
+  APIs: "Designing, using, or maintaining application programming interfaces so systems can exchange data and services reliably.",
+  "Basic Python": "Writing simple Python scripts to automate work, analyse data, or build small applications.",
+  Python: "Writing Python programs for automation, analysis, backend services, data workflows, or AI-enabled applications.",
+  SQL: "Querying, joining, cleaning, and summarising structured data stored in relational databases.",
+  Docker: "Packaging applications and dependencies into containers so they run consistently across development and deployment environments.",
+  Git: "Tracking code changes, collaborating through branches, and managing version history in software projects.",
+  Testing: "Checking that systems, processes, or deliverables behave as expected before they are released or relied on.",
+  "Machine Learning Fundamentals": "Understanding how models learn from data, including features, training, evaluation, overfitting, and common model types.",
+  "Model Evaluation": "Measuring model quality with appropriate metrics, test data, error analysis, and validation methods.",
+  "Vector Databases": "Storing and searching embedding vectors so applications can retrieve semantically similar text, images, or records.",
+  "Prompt Engineering": "Designing instructions, examples, and context so AI systems produce more reliable and useful outputs.",
+  "Responsible AI": "Applying fairness, safety, privacy, transparency, and human oversight practices when designing or using AI systems.",
+};
+
+function describeSkill(skillName) {
+  const skill = String(skillName ?? "").trim();
+  if (!skill) {
+    return "A capability used to perform role-specific work effectively.";
+  }
+
+  if (skillDescriptionOverrides[skill]) {
+    return skillDescriptionOverrides[skill];
+  }
+
+  const lower = skill.toLowerCase();
+  if (lower.includes("ethic")) {
+    return `Applying professional principles and standards in ${skill}, especially when judging conduct, responsibility, and trust.`;
+  }
+  if (lower.includes("compliance") || lower.includes("regulatory")) {
+    return `Ensuring work related to ${skill} follows relevant laws, standards, policies, and audit expectations.`;
+  }
+  if (lower.includes("analysis") || lower.includes("analytics")) {
+    return `Examining ${skill.replace(/analysis|analytics/gi, "").trim() || "information"} to identify patterns, risks, causes, and useful decisions.`;
+  }
+  if (lower.includes("management")) {
+    return `Planning, coordinating, monitoring, and improving ${skill.replace(/management/gi, "").trim() || "work"} across people, tasks, or resources.`;
+  }
+  if (lower.includes("scanning")) {
+    return `Monitoring changes, signals, tools, and trends related to ${skill.replace(/scanning/gi, "").trim() || "the operating environment"}.`;
+  }
+  if (lower.includes("transaction")) {
+    return `Recording, checking, interpreting, and reporting ${skill.toLowerCase()} accurately for operational or financial decisions.`;
+  }
+  if (lower.includes("audit") || lower.includes("assurance")) {
+    return `Reviewing evidence, controls, and work quality so ${skill.toLowerCase()} can support reliable conclusions.`;
+  }
+  if (lower.includes("communication") || lower.includes("reporting")) {
+    return `Turning information about ${skill.toLowerCase()} into clear updates, records, or recommendations for the right audience.`;
+  }
+  if (lower.includes("design")) {
+    return `Creating, testing, and refining ${skill.toLowerCase()} decisions so the final solution fits user, business, or technical needs.`;
+  }
+  if (lower.includes("research")) {
+    return `Finding, evaluating, and synthesising information for ${skill.toLowerCase()} so decisions are based on evidence.`;
+  }
+
+  return `Applying ${skill} methods, tools, and judgement to complete role-specific work and make sound decisions.`;
+}
+
+function skillDescriptionFor(result, skillName, providedDescription = "") {
+  const descriptions = {
+    ...(result.current.skill_descriptions ?? {}),
+    ...(result.target.skill_descriptions ?? {}),
+    ...(result.skill_descriptions ?? {}),
+  };
+  return providedDescription || descriptions[skillName] || describeSkill(skillName);
+}
+
 function SkillGraph({ result }) {
-  const transferables = result.transferable.slice(0, 5);
-  const gaps = result.missing.slice(0, 5);
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const mapRef = useRef(null);
+  const dragRef = useRef(null);
+  const [draggingNodeId, setDraggingNodeId] = useState("");
+  const [raisedNodeId, setRaisedNodeId] = useState("");
+  const [activeNodeId, setActiveNodeId] = useState("");
+
+  const graphData = useMemo(() => {
+    const transferPositions = [
+      [32, 24],
+      [42, 34],
+      [29, 50],
+      [44, 62],
+      [34, 76],
+      [50, 49],
+    ];
+    const gapPositions = [
+      [69, 22],
+      [80, 35],
+      [66, 50],
+      [82, 64],
+      [71, 78],
+      [57, 36],
+    ];
+    const transferNodes = result.transferable.slice(0, 6).map((skill, index) => ({
+      id: `transfer-${skill}`,
+      label: skill,
+      type: "transfer",
+      x: transferPositions[index][0],
+      y: transferPositions[index][1],
+      description: skillDescriptionFor(result, skill),
+    }));
+    const gapNodes = result.missing.slice(0, 6).map((skill, index) => ({
+      id: `gap-${skill.name}`,
+      label: skill.name,
+      meta: `${skill.demand}% demand`,
+      type: "gap",
+      x: gapPositions[index][0],
+      y: gapPositions[index][1],
+      description: skillDescriptionFor(result, skill.name, skill.description),
+    }));
+    const roleNodes = [
+      {
+        id: "current-role",
+        label: result.current.title,
+        meta: `${result.transferable.length} transfer`,
+        type: "current",
+        x: 12,
+        y: 50,
+        description: result.current.description || "The starting role profile used as the baseline for existing skills.",
+      },
+      {
+        id: "target-role",
+        label: result.target.title,
+        meta: `${result.missing.length} gaps`,
+        type: "target",
+        x: 88,
+        y: 50,
+        description: result.target.description || "The target role profile used to identify required and missing skills.",
+      },
+    ];
+    const nodes = [...roleNodes, ...transferNodes, ...gapNodes];
+    const links = [
+      ...transferNodes.flatMap((node) => [
+        { from: roleNodes[0].id, to: node.id, type: "transfer" },
+        { from: node.id, to: roleNodes[1].id, type: "transfer" },
+      ]),
+      ...gapNodes.map((node) => ({ from: roleNodes[1].id, to: node.id, type: "gap" })),
+      ...(transferNodes.length ? [] : [{ from: roleNodes[0].id, to: roleNodes[1].id, type: "thin" }]),
+    ];
+
+    return { nodes, links };
+  }, [
+    result.current.description,
+    result.current.skill_descriptions,
+    result.current.title,
+    result.missing,
+    result.skill_descriptions,
+    result.target.description,
+    result.target.skill_descriptions,
+    result.target.title,
+    result.transferable,
+  ]);
+
+  const defaultPositions = useMemo(
+    () => Object.fromEntries(graphData.nodes.map((node) => [node.id, { x: node.x, y: node.y }])),
+    [graphData.nodes],
+  );
+  const [nodePositions, setNodePositions] = useState(defaultPositions);
+  const [closingNode, setClosingNode] = useState(null);
+
+  useEffect(() => {
+    setNodePositions(defaultPositions);
+    setActiveNodeId("");
+    setClosingNode(null);
+    setDraggingNodeId("");
+    setRaisedNodeId("");
+    dragRef.current = null;
+  }, [defaultPositions]);
+
+  const nodes = useMemo(
+    () => graphData.nodes.map((node) => ({ ...node, ...(nodePositions[node.id] ?? { x: node.x, y: node.y }) })),
+    [graphData.nodes, nodePositions],
+  );
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const activeNode = activeNodeId ? nodeById.get(activeNodeId) : null;
+  const popupNode = activeNode ?? closingNode;
+
+  function closeActiveNode() {
+    if (activeNode) {
+      setClosingNode(activeNode);
+    }
+
+    setActiveNodeId("");
+  }
+
+  function openNode(nodeId) {
+    setClosingNode(null);
+    setActiveNodeId(nodeId);
+  }
+
+  useEffect(() => {
+    if (!activeNodeId) {
+      return undefined;
+    }
+
+    const closeOnOutsidePointerDown = (event) => {
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (target.closest(".node-popup") || target.closest(".graph-node")) {
+        return;
+      }
+
+      closeActiveNode();
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointerDown, true);
+    };
+  }, [activeNodeId, activeNode]);
+
+  function moveNode(nodeId, x, y) {
+    setNodePositions((current) => ({
+      ...current,
+      [nodeId]: {
+        x: clamp(x, 4, 96),
+        y: clamp(y, 6, 94),
+      },
+    }));
+  }
+
+  function releaseDragCapture(drag, fallbackPointerId) {
+    try {
+      drag.captureElement?.releasePointerCapture?.(drag.pointerId ?? fallbackPointerId);
+    } catch {
+      // Pointer capture can already be released by the browser; the drag state is still safe to clear.
+    }
+  }
+
+  function handlePointerDown(event, node) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const currentPosition = nodePositions[node.id] ?? { x: node.x, y: node.y };
+    dragRef.current = {
+      id: node.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      baseX: currentPosition.x,
+      baseY: currentPosition.y,
+      moved: false,
+      wasActive: activeNodeId === node.id,
+      pointerId: event.pointerId,
+      captureElement: event.currentTarget,
+    };
+    closeActiveNode();
+    setDraggingNodeId(node.id);
+    setRaisedNodeId(node.id);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function handleGraphPointerMove(event) {
+    const drag = dragRef.current;
+    const rect = mapRef.current?.getBoundingClientRect();
+
+    if (!drag || !rect) {
+      return;
+    }
+
+    const deltaX = ((event.clientX - drag.startX) / rect.width) * 100;
+    const deltaY = ((event.clientY - drag.startY) / rect.height) * 100;
+    drag.moved = drag.moved || Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4;
+    moveNode(drag.id, drag.baseX + deltaX, drag.baseY + deltaY);
+  }
+
+  function handleGraphPointerUp(event) {
+    const drag = dragRef.current;
+
+    if (!drag) {
+      return;
+    }
+
+    releaseDragCapture(drag, event.pointerId);
+    dragRef.current = null;
+    setDraggingNodeId("");
+
+    if (!drag.moved) {
+      if (drag.wasActive) {
+        setActiveNodeId("");
+      } else {
+        openNode(drag.id);
+      }
+
+      setRaisedNodeId(drag.id);
+    }
+  }
+
+  function handleGraphPointerCancel(event) {
+    const drag = dragRef.current;
+
+    if (!drag) {
+      return;
+    }
+
+    releaseDragCapture(drag, event.pointerId);
+    dragRef.current = null;
+    setDraggingNodeId("");
+  }
+
+  function handleKeyDown(event, node) {
+    const currentPosition = nodePositions[node.id] ?? { x: node.x, y: node.y };
+    const keyMovement = {
+      ArrowLeft: [-2, 0],
+      ArrowRight: [2, 0],
+      ArrowUp: [0, -2],
+      ArrowDown: [0, 2],
+    };
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (activeNodeId === node.id) {
+        closeActiveNode();
+      } else {
+        openNode(node.id);
+      }
+
+      setRaisedNodeId(node.id);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      closeActiveNode();
+      return;
+    }
+
+    if (keyMovement[event.key]) {
+      const [x, y] = keyMovement[event.key];
+      event.preventDefault();
+      setRaisedNodeId(node.id);
+      moveNode(node.id, currentPosition.x + x, currentPosition.y + y);
+    }
+  }
+
+  const activePopupPlacement = popupNode?.y < 34 ? "below" : "above";
 
   return (
-    <div className="skill-map" role="img" aria-label={`Skill path from ${result.current.title} to ${result.target.title}`}>
-      <article className="role-card current">
-        <span>Current</span>
-        <strong>{result.current.title}</strong>
-        <p>{result.transferable.length} skills transfer</p>
-      </article>
+    <div
+      className="skill-map obsidian-map"
+      ref={mapRef}
+      aria-label={`Knowledge graph from ${result.current.title} to ${result.target.title}`}
+      onPointerCancel={handleGraphPointerCancel}
+      onPointerMove={handleGraphPointerMove}
+      onPointerUp={handleGraphPointerUp}
+    >
+      <svg className="graph-web" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(236, 241, 218, 0.58)" />
+            <stop offset="100%" stopColor="rgba(236, 241, 218, 0)" />
+          </radialGradient>
+        </defs>
+        {graphData.links.map((link, index) => {
+          const from = nodeById.get(link.from);
+          const to = nodeById.get(link.to);
 
-      <div className="bridge-column" aria-hidden="true">
-        <span>Transfer Bridge</span>
-        <div className="bridge-line" />
+          if (!from || !to) {
+            return null;
+          }
+
+          return (
+            <line
+              key={`${link.from}-${link.to}-${index}`}
+              className={`graph-edge ${link.type}`}
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+            />
+          );
+        })}
+        {nodes.map((node) => (
+          <circle
+            className={`graph-glow ${node.type}`}
+            cx={node.x}
+            cy={node.y}
+            r={node.type === "current" || node.type === "target" ? 7.8 : 4.6}
+            key={`glow-${node.id}`}
+          />
+        ))}
+      </svg>
+
+      <div className="graph-constellation">
+        {nodes.map((node, index) => (
+          <button
+            type="button"
+            aria-label={`${node.label}. ${node.description}`}
+            className={`graph-node ${node.type}${draggingNodeId === node.id ? " dragging" : ""}${activeNodeId === node.id ? " selected" : ""}${raisedNodeId === node.id ? " raised" : ""}`}
+            key={node.id}
+            style={{
+              "--x": `${node.x}%`,
+              "--y": `${node.y}%`,
+              "--delay": `${index * 120}ms`,
+            }}
+            onKeyDown={(event) => handleKeyDown(event, node)}
+            onPointerDown={(event) => handlePointerDown(event, node)}
+          >
+            <span className="node-dot" />
+            <strong>{node.label}</strong>
+            {node.meta ? <small>{node.meta}</small> : null}
+          </button>
+        ))}
       </div>
 
-      <article className="role-card target">
-        <span>Target</span>
-        <strong>{result.target.title}</strong>
-        <p>{result.missing.length} priority gaps</p>
-      </article>
+      {popupNode ? (
+        <aside
+          className={`node-popup ${popupNode.type} ${activePopupPlacement}${activeNode ? "" : " closing"}`}
+          style={{
+            "--popup-x": `${clamp(popupNode.x, 18, 82)}%`,
+            "--popup-y": `${clamp(popupNode.y, 6, 92)}%`,
+          }}
+          onAnimationEnd={(event) => {
+            if (event.animationName === "popup-dismiss") {
+              setClosingNode(null);
+            }
+          }}
+        >
+          <button type="button" className="node-popup-close" aria-label="Close node details" onClick={closeActiveNode}>
+            <X size={14} strokeWidth={2.2} />
+          </button>
+          <span className="node-popup-kicker">{popupNode.type === "gap" ? "Priority gap" : popupNode.type === "transfer" ? "Transferable skill" : "Role node"}</span>
+          <strong>{popupNode.label}</strong>
+          {popupNode.meta ? <small>{popupNode.meta}</small> : null}
+          <p>{popupNode.description}</p>
+        </aside>
+      ) : null}
 
-      <div className="map-band transfer-band">
-        <span>Already useful</span>
-        <div>
-          {transferables.map((skill) => (
-            <b key={skill}>{skill}</b>
-          ))}
-        </div>
-      </div>
-
-      <div className="map-band gap-band">
-        <span>Build next</span>
-        <div>
-          {gaps.map((skill) => (
-            <b key={skill.name}>
-              {skill.name}
-              <small>{skill.demand}%</small>
-            </b>
-          ))}
-        </div>
+      <div className="graph-legend" aria-hidden="true">
+        <span><i className="legend-transfer" />Transferable</span>
+        <span><i className="legend-gap" />Gap</span>
+        <span><i className="legend-role" />Role</span>
       </div>
     </div>
   );
