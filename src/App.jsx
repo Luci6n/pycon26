@@ -1,14 +1,20 @@
 import {
   ArrowLeftRight,
+  BookOpen,
   Brain,
   CheckCircle2,
   CircleDot,
+  Clock3,
+  ExternalLink,
+  Flag,
   GitBranch,
   Layers3,
   Link as LinkIcon,
   Upload,
   Route,
+  RotateCcw,
   ShieldCheck,
+  SkipForward,
   Sparkles,
   X,
 } from "lucide-react";
@@ -987,21 +993,12 @@ function App() {
 
         <section className="panel roadmap-panel" id="roadmap">
           <PanelHeading icon={Brain} title="30/60/90 day learning plan" subtitle="Generated from the highest-priority gaps." />
-          <div className="roadmap">
-            {result.roadmap.map((phase) => (
-              <article key={phase.window} className="roadmap-phase">
-                <div>
-                  <span>{phase.window}</span>
-                  <strong>{phase.theme}</strong>
-                </div>
-                <ul>
-                  {phase.tasks.map((task) => (
-                    <li key={task}>{task}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
+          <LearningRoadmapMap
+            result={result}
+            apiEvidence={apiEvidence}
+            liveEvidence={liveEvidence}
+            progressKey={`pathforge-roadmap-progress:${currentRole || result.current.id}:${targetRole || result.target.id}`}
+          />
         </section>
 
         <SchedulePlanner
@@ -1803,6 +1800,408 @@ function SkillList({ skills, tone, empty }) {
       ))}
     </div>
   );
+}
+
+function LearningRoadmapMap({ result, apiEvidence, liveEvidence, progressKey }) {
+  const nodes = useMemo(() => buildLearningRoadmapNodes(result), [result]);
+  const [progress, setProgress] = useState({});
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+
+  useEffect(() => {
+    try {
+      setProgress(JSON.parse(window.localStorage.getItem(progressKey) || "{}"));
+    } catch {
+      setProgress({});
+    }
+  }, [progressKey]);
+
+  useEffect(() => {
+    if (!nodes.length) {
+      setSelectedNodeId("");
+      return;
+    }
+
+    const selectedExists = nodes.some((node) => node.id === selectedNodeId);
+    if (!selectedExists) {
+      setSelectedNodeId(firstOpenRoadmapNode(nodes, progress).id);
+    }
+  }, [nodes, progress, selectedNodeId]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(progressKey, JSON.stringify(progress));
+    } catch {
+      // Local progress is a convenience layer; the roadmap remains usable if storage is unavailable.
+    }
+  }, [progress, progressKey]);
+
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
+  const stats = roadmapProgressStats(nodes, progress);
+  const resources = roadmapResourceLinks(liveEvidence);
+
+  const updateNodeStatus = (nodeId, status) => {
+    setProgress((current) => {
+      const next = { ...current };
+      if (status === "todo") {
+        delete next[nodeId];
+      } else {
+        next[nodeId] = status;
+      }
+      return next;
+    });
+  };
+
+  const resetProgress = () => setProgress({});
+
+  return (
+    <div className="learning-roadmap-shell">
+      <div className="roadmap-toolbar">
+        <div className="roadmap-progress-meter" aria-label={`${stats.percent}% roadmap complete`}>
+          <strong>{stats.percent}%</strong>
+          <span>done</span>
+          <div>
+            <i style={{ width: `${stats.percent}%` }} />
+          </div>
+        </div>
+        <div className="roadmap-stat-strip" aria-label="Roadmap progress summary">
+          <span><CheckCircle2 size={14} /> {stats.done} completed</span>
+          <span><Clock3 size={14} /> {stats.active} in progress</span>
+          <span><SkipForward size={14} /> {stats.skipped} skipped</span>
+          <span><CircleDot size={14} /> {stats.total} total</span>
+        </div>
+        <button type="button" className="roadmap-reset-button" onClick={resetProgress} disabled={!Object.keys(progress).length}>
+          <RotateCcw size={15} />
+          Reset
+        </button>
+      </div>
+
+      <div className="learning-roadmap-layout">
+        <div className="roadmap-canvas" aria-label={`Learning roadmap for ${result.target.title}`}>
+          <div className="roadmap-spine" aria-hidden="true" />
+          {result.roadmap.map((phase, phaseIndex) => {
+            const phaseNodes = nodes.filter((node) => node.phaseIndex === phaseIndex);
+            return (
+              <section className="roadmap-lane" key={phase.window} aria-labelledby={`roadmap-phase-${phaseIndex}`}>
+                <div className="roadmap-lane-heading">
+                  <span>{phase.window}</span>
+                  <strong id={`roadmap-phase-${phaseIndex}`}>{phase.theme}</strong>
+                </div>
+                <div className="roadmap-node-list">
+                  {phaseNodes.map((node, nodeIndex) => {
+                    const status = progress[node.id] ?? "todo";
+                    const isSelected = selectedNode?.id === node.id;
+                    return (
+                      <button
+                        type="button"
+                        key={node.id}
+                        className={`roadmap-node ${status} ${isSelected ? "selected" : ""}`}
+                        onClick={() => setSelectedNodeId(node.id)}
+                        aria-pressed={isSelected}
+                      >
+                        <span className="node-step">{phaseIndex + 1}.{nodeIndex + 1}</span>
+                        <span className="node-copy">
+                          <strong>{node.title}</strong>
+                          <small>{node.relatedSkill}</small>
+                        </span>
+                        <RoadmapStatusIcon status={status} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+
+        {selectedNode ? (
+          <RoadmapDetailPanel
+            node={selectedNode}
+            status={progress[selectedNode.id] ?? "todo"}
+            resources={resources}
+            evidence={apiEvidence}
+            targetTitle={result.target.title}
+            onStatusChange={(status) => updateNodeStatus(selectedNode.id, status)}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RoadmapDetailPanel({ node, status, resources, evidence, targetTitle, onStatusChange }) {
+  const matchingResources = resources
+    .filter((resource) => resourceMatchesNode(resource, node))
+    .slice(0, 3);
+  const visibleResources = matchingResources.length ? matchingResources : resources.slice(0, 2);
+  const evidenceSkills = uniqueStrings([
+    ...(evidence?.resume?.matched_skills ?? []),
+    ...(evidence?.manual_skills?.matched_skills ?? []),
+    ...(evidence?.repository?.inferred_skills ?? []),
+  ]).slice(0, 4);
+
+  return (
+    <aside className="roadmap-detail-panel" aria-label="Selected roadmap milestone">
+      <div className="roadmap-detail-kicker">
+        <span>{node.window}</span>
+        <RoadmapStatusLabel status={status} />
+      </div>
+      <h3>{node.title}</h3>
+      <p>{node.description}</p>
+
+      <div className="roadmap-detail-meta">
+        <span><Flag size={14} /> {node.priority}</span>
+        <span><BookOpen size={14} /> {node.relatedSkill}</span>
+      </div>
+
+      <div className="roadmap-artifact-box">
+        <span>Expected artifact</span>
+        <strong>{node.artifact}</strong>
+      </div>
+
+      <div className="roadmap-status-actions" aria-label={`Update status for ${node.title}`}>
+        <button type="button" className={status === "active" ? "active" : ""} onClick={() => onStatusChange("active")}>
+          <Clock3 size={14} />
+          Active
+        </button>
+        <button type="button" className={status === "done" ? "done" : ""} onClick={() => onStatusChange("done")}>
+          <CheckCircle2 size={14} />
+          Done
+        </button>
+        <button type="button" className={status === "skipped" ? "skipped" : ""} onClick={() => onStatusChange("skipped")}>
+          <SkipForward size={14} />
+          Skip
+        </button>
+        <button type="button" onClick={() => onStatusChange("todo")}>
+          <RotateCcw size={14} />
+          Todo
+        </button>
+      </div>
+
+      {visibleResources.length ? (
+        <div className="roadmap-detail-section">
+          <span>Learning resources</span>
+          <div className="roadmap-detail-links">
+            {visibleResources.map((resource) => (
+              resource.url ? (
+                <a href={resource.url} key={resource.url} target="_blank" rel="noreferrer">
+                  {resource.title}
+                  <ExternalLink size={13} />
+                </a>
+              ) : (
+                <p key={resource.title}>{resource.title}</p>
+              )
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="roadmap-detail-section">
+        <span>Evidence angle</span>
+        <p>
+          {evidenceSkills.length
+            ? `${evidenceSkills.join(", ")} can support the ${targetTitle} transition while this milestone closes the next gap.`
+            : `Use this milestone to create proof that is easy to explain for ${targetTitle} roles.`}
+        </p>
+      </div>
+    </aside>
+  );
+}
+
+function RoadmapStatusIcon({ status }) {
+  if (status === "done") {
+    return <CheckCircle2 size={18} />;
+  }
+
+  if (status === "active") {
+    return <Clock3 size={18} />;
+  }
+
+  if (status === "skipped") {
+    return <SkipForward size={18} />;
+  }
+
+  return <CircleDot size={18} />;
+}
+
+function RoadmapStatusLabel({ status }) {
+  const labels = {
+    todo: "Todo",
+    active: "Active",
+    done: "Done",
+    skipped: "Skipped",
+  };
+
+  return <b className={`roadmap-status-label ${status}`}>{labels[status] ?? labels.todo}</b>;
+}
+
+function buildLearningRoadmapNodes(result) {
+  const gaps = result.missing ?? [];
+  const transferable = result.transferable ?? [];
+
+  return (result.roadmap ?? []).flatMap((phase, phaseIndex) => (
+    (phase.tasks ?? []).map((task, taskIndex) => {
+      const skillMatch = gaps.find((gap) => task.toLowerCase().includes(gap.name.toLowerCase()));
+      const fallbackSkill = gaps[phaseIndex]?.name
+        ?? gaps[taskIndex]?.name
+        ?? transferable[taskIndex]
+        ?? result.target.title;
+      const relatedSkill = skillMatch?.name ?? inferRoadmapSkill(task, fallbackSkill);
+      const priority = skillMatch
+        ? `${skillMatch.urgency} priority - ${skillMatch.demand}% demand`
+        : inferRoadmapPriority(task, phase.theme);
+
+      return {
+        id: `phase-${phaseIndex}-task-${taskIndex}`,
+        phaseIndex,
+        taskIndex,
+        window: phase.window,
+        theme: phase.theme,
+        title: taskToRoadmapTitle(task),
+        description: task,
+        relatedSkill,
+        priority,
+        artifact: inferRoadmapArtifact(task, relatedSkill, result.target.title),
+      };
+    })
+  ));
+}
+
+function firstOpenRoadmapNode(nodes, progress) {
+  return nodes.find((node) => progress[node.id] !== "done" && progress[node.id] !== "skipped") ?? nodes[0];
+}
+
+function roadmapProgressStats(nodes, progress) {
+  const total = nodes.length;
+  const done = nodes.filter((node) => progress[node.id] === "done").length;
+  const active = nodes.filter((node) => progress[node.id] === "active").length;
+  const skipped = nodes.filter((node) => progress[node.id] === "skipped").length;
+
+  return {
+    total,
+    done,
+    active,
+    skipped,
+    percent: total ? Math.round((done / total) * 100) : 0,
+  };
+}
+
+function roadmapResourceLinks(liveEvidence) {
+  const resources = liveEvidence?.resources;
+  const categoryResults = (resources?.categories ?? [])
+    .flatMap((category) => (category.results ?? []).map((item) => ({ ...item, typeLabel: category.label })));
+  const fallbackResults = resources?.results ?? [];
+
+  return uniqueResourceLinks(categoryResults.length ? categoryResults : fallbackResults);
+}
+
+function uniqueResourceLinks(resources) {
+  const seen = new Set();
+  return resources.filter((resource) => {
+    const key = `${resource.url ?? ""}${resource.title ?? ""}`.toLowerCase();
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function resourceMatchesNode(resource, node) {
+  const haystack = `${resource.title ?? ""} ${resource.description ?? ""} ${resource.typeLabel ?? ""}`.toLowerCase();
+  return node.relatedSkill
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((part) => part.length > 3)
+    .some((part) => haystack.includes(part));
+}
+
+function taskToRoadmapTitle(task) {
+  return task
+    .replace(/\.$/, "")
+    .replace(/^Learn /i, "Learn: ")
+    .replace(/^Build /i, "Build: ")
+    .replace(/^Add /i, "Add: ")
+    .replace(/^Ask /i, "Review: ")
+    .replace(/^Apply /i, "Apply: ")
+    .replace(/^Refresh /i, "Iterate: ");
+}
+
+function inferRoadmapSkill(task, fallbackSkill) {
+  const lowerTask = task.toLowerCase();
+
+  if (lowerTask.includes("map current skills")) {
+    return "Transferable skill map";
+  }
+
+  if (lowerTask.includes("write-up") || lowerTask.includes("case study")) {
+    return "Evidence narrative";
+  }
+
+  if (lowerTask.includes("tests") || lowerTask.includes("documentation")) {
+    return "Portfolio quality";
+  }
+
+  if (lowerTask.includes("practitioners") || lowerTask.includes("feedback")) {
+    return "Role feedback";
+  }
+
+  if (lowerTask.includes("apply") || lowerTask.includes("postings")) {
+    return "Market validation";
+  }
+
+  return fallbackSkill;
+}
+
+function inferRoadmapPriority(task, theme) {
+  const lowerTask = task.toLowerCase();
+
+  if (lowerTask.includes("portfolio") || lowerTask.includes("case study")) {
+    return "Portfolio proof";
+  }
+
+  if (lowerTask.includes("apply") || lowerTask.includes("postings")) {
+    return "Market signal";
+  }
+
+  if (lowerTask.includes("review") || lowerTask.includes("feedback")) {
+    return "External validation";
+  }
+
+  return `${theme} milestone`;
+}
+
+function inferRoadmapArtifact(task, relatedSkill, targetTitle) {
+  const lowerTask = task.toLowerCase();
+
+  if (lowerTask.includes("notebook") || lowerTask.includes("mini-project")) {
+    return `${relatedSkill} mini-project`;
+  }
+
+  if (lowerTask.includes("map current skills")) {
+    return "Skill evidence matrix";
+  }
+
+  if (lowerTask.includes("write-up")) {
+    return "Published transition write-up";
+  }
+
+  if (lowerTask.includes("portfolio") || lowerTask.includes("case study")) {
+    return `${targetTitle} case study`;
+  }
+
+  if (lowerTask.includes("tests") || lowerTask.includes("documentation")) {
+    return "Tested, documented project repo";
+  }
+
+  if (lowerTask.includes("practitioners")) {
+    return "Practitioner review notes";
+  }
+
+  if (lowerTask.includes("apply") || lowerTask.includes("postings")) {
+    return "Tracked application and keyword log";
+  }
+
+  return `${relatedSkill} proof point`;
 }
 
 function SkillGraph({ result }) {
