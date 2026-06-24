@@ -985,7 +985,6 @@ function App() {
           <PanelHeading icon={Brain} title="30/60/90 day learning plan" subtitle="Generated from the highest-priority gaps." />
           <LearningRoadmapMap
             result={result}
-            apiEvidence={apiEvidence}
             liveEvidence={liveEvidence}
             progressKey={`pathforge-roadmap-progress:${currentRole || result.current.id}:${targetRole || result.target.id}`}
           />
@@ -1943,7 +1942,7 @@ function SkillList({ skills, tone, empty }) {
   );
 }
 
-function LearningRoadmapMap({ result, apiEvidence, liveEvidence, progressKey }) {
+function LearningRoadmapMap({ result, liveEvidence, progressKey }) {
   const nodes = useMemo(() => buildLearningRoadmapNodes(result), [result]);
   const [progress, setProgress] = useState({});
   const [selectedNodeId, setSelectedNodeId] = useState("");
@@ -1979,6 +1978,7 @@ function LearningRoadmapMap({ result, apiEvidence, liveEvidence, progressKey }) 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
   const stats = roadmapProgressStats(nodes, progress);
   const resources = roadmapResourceLinks(liveEvidence);
+  const resourcesLoading = liveEvidence?.status === "loading" && !liveEvidence?.resources;
 
   const updateNodeStatus = (nodeId, status) => {
     setProgress((current) => {
@@ -2059,8 +2059,7 @@ function LearningRoadmapMap({ result, apiEvidence, liveEvidence, progressKey }) 
             node={selectedNode}
             status={progress[selectedNode.id] ?? "todo"}
             resources={resources}
-            evidence={apiEvidence}
-            targetTitle={result.target.title}
+            resourcesLoading={resourcesLoading}
             onStatusChange={(status) => updateNodeStatus(selectedNode.id, status)}
           />
         ) : null}
@@ -2069,16 +2068,11 @@ function LearningRoadmapMap({ result, apiEvidence, liveEvidence, progressKey }) 
   );
 }
 
-function RoadmapDetailPanel({ node, status, resources, evidence, targetTitle, onStatusChange }) {
+function RoadmapDetailPanel({ node, status, resources, resourcesLoading, onStatusChange }) {
   const matchingResources = resources
     .filter((resource) => resourceMatchesNode(resource, node))
     .slice(0, 3);
   const visibleResources = matchingResources.length ? matchingResources : resources.slice(0, 2);
-  const evidenceSkills = uniqueStrings([
-    ...(evidence?.resume?.matched_skills ?? []),
-    ...(evidence?.manual_skills?.matched_skills ?? []),
-    ...(evidence?.repository?.inferred_skills ?? []),
-  ]).slice(0, 4);
 
   return (
     <aside className="roadmap-detail-panel" aria-label="Selected roadmap milestone">
@@ -2118,32 +2112,30 @@ function RoadmapDetailPanel({ node, status, resources, evidence, targetTitle, on
         </button>
       </div>
 
-      {visibleResources.length ? (
+      {resourcesLoading || visibleResources.length ? (
         <div className="roadmap-detail-section">
           <span>Learning resources</span>
-          <div className="roadmap-detail-links">
-            {visibleResources.map((resource) => (
-              resource.url ? (
-                <a href={resource.url} key={resource.url} target="_blank" rel="noreferrer">
-                  {resource.title}
-                  <ExternalLink size={13} />
-                </a>
-              ) : (
-                <p key={resource.title}>{resource.title}</p>
-              )
-            ))}
-          </div>
+          {resourcesLoading ? (
+            <div className="roadmap-resource-loading" aria-label="Searching learning resources">
+              <span />
+              <span />
+            </div>
+          ) : (
+            <div className="roadmap-detail-links">
+              {visibleResources.map((resource) => (
+                resource.url ? (
+                  <a href={resource.url} key={resource.url} target="_blank" rel="noreferrer">
+                    {resource.title}
+                    <ExternalLink size={13} />
+                  </a>
+                ) : (
+                  <p key={resource.title}>{resource.title}</p>
+                )
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
-
-      <div className="roadmap-detail-section">
-        <span>Evidence angle</span>
-        <p>
-          {evidenceSkills.length
-            ? `${evidenceSkills.join(", ")} can support the ${targetTitle} transition while this milestone closes the next gap.`
-            : `Use this milestone to create proof that is easy to explain for ${targetTitle} roles.`}
-        </p>
-      </div>
     </aside>
   );
 }

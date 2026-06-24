@@ -1326,7 +1326,7 @@ button {
 
 .account-menu {
   position: relative;
-  z-index: 50;
+  z-index: 1001;
   flex: 0 0 auto;
 }
 
@@ -2722,6 +2722,36 @@ button {
 .roadmap-detail-links {
   display: grid;
   gap: 8px;
+}
+
+.roadmap-resource-loading {
+  display: grid;
+  gap: 8px;
+}
+
+.roadmap-resource-loading span {
+  position: relative;
+  overflow: hidden;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.roadmap-resource-loading span::before {
+  content: "";
+  position: absolute;
+  inset: 9px 10px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(222, 210, 194, 0.44), rgba(255, 250, 243, 0.96), rgba(222, 210, 194, 0.44));
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.15s ease-in-out infinite;
+}
+
+.roadmap-resource-loading span:nth-child(2)::before {
+  right: 22%;
+  animation-delay: 0.12s;
 }
 
 .roadmap-detail-links a,
