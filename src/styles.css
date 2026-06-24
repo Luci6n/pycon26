@@ -110,7 +110,9 @@ button {
 
 .topbar {
   position: relative;
-  z-index: 30;
+  /* Must stay above .selector-strip (z-index: 80) so the account popover,
+     which lives inside this stacking context, overlays the role selects. */
+  z-index: 100;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
