@@ -19,7 +19,6 @@ import {
   X,
 } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { roles } from "./data/roles.js";
 import {
   completeSession,
   createSharePage,
@@ -41,7 +40,6 @@ import {
   saveRoadmap,
   saveSchedule,
 } from "./utils/api.js";
-import { analyzeTransition } from "./utils/analysis.js";
 import SchedulePlanner from "./components/SchedulePlanner.jsx";
 import ScheduleCalendar from "./components/ScheduleCalendar.jsx";
 import ReflectionModal from "./components/ReflectionModal.jsx";
@@ -109,8 +107,7 @@ function App() {
   const [activeEvidenceTab, setActiveEvidenceTab] = useState("resume");
   const [marketScope, setMarketScope] = useState("country");
   const [marketCountry, setMarketCountry] = useState("Singapore");
-  const [availableRoles, setAvailableRoles] = useState(roles);
-  const [apiStatus, setApiStatus] = useState("checking");
+  const [availableRoles, setAvailableRoles] = useState([]);
   const [result, setResult] = useState(null);
   const [apiEvidence, setApiEvidence] = useState(null);
   const [liveEvidence, setLiveEvidence] = useState(emptyLiveEvidence);
@@ -158,13 +155,12 @@ function App() {
       .then((payload) => {
         if (!cancelled) {
           setAvailableRoles(payload.roles);
-          setApiStatus("live");
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setAvailableRoles(roles);
-          setApiStatus("fallback");
+          setAvailableRoles([]);
+          setFormError("Server error: could not load SkillsFuture roles. Start the backend and refresh.");
         }
       });
 
@@ -477,11 +473,13 @@ function App() {
       }
     } catch (error) {
       if (isCurrentRun()) {
+        const message = error instanceof Error ? error.message : "Server error: analysis failed.";
+        setFormError(message);
         setLiveEvidence({
           status: "error",
           resources: null,
           market: null,
-          error: error instanceof Error ? error.message : "Live evidence analysis failed.",
+          error: message,
         });
       }
     }
@@ -489,19 +487,9 @@ function App() {
 
   const runPersonalizedAnalysis = async (fromRole, toRole, profileSkills) => {
     try {
-      const analysis = await fetchAnalysisFromApi(fromRole, toRole, profileSkills);
-      setApiStatus("live");
-      return analysis;
+      return await fetchAnalysisFromApi(fromRole, toRole, profileSkills);
     } catch {
-      const canUseLocalFallback = roles.some((role) => role.id === fromRole)
-        && roles.some((role) => role.id === toRole);
-
-      if (!canUseLocalFallback) {
-        throw new Error("Official dataset analysis failed.");
-      }
-
-      setApiStatus("fallback");
-      return analyzeTransition(fromRole, toRole, profileSkills);
+      throw new Error("Server error: could not run role analysis. Check the backend and try again.");
     }
   };
 
