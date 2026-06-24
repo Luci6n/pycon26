@@ -206,10 +206,55 @@ async function fetchJson(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw new Error(await errorMessageFromResponse(response));
   }
 
   return response.json();
+}
+
+async function errorMessageFromResponse(response) {
+  const fallback = `API request failed: ${response.status}`;
+  const contentType = response.headers.get("content-type") ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const payload = await response.json();
+      return formatApiErrorDetail(payload?.detail ?? payload?.message ?? payload?.error, fallback);
+    }
+
+    const text = (await response.text()).trim();
+    return text || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatApiErrorDetail(detail, fallback) {
+  if (typeof detail === "string") {
+    return detail.trim() || fallback;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+
+        const location = Array.isArray(item?.loc) ? item.loc.filter((part) => part !== "body").join(".") : "";
+        const message = item?.msg ?? item?.message;
+        return [location, message].filter(Boolean).join(": ");
+      })
+      .filter(Boolean);
+
+    return messages.join(" ") || fallback;
+  }
+
+  if (detail && typeof detail === "object") {
+    return detail.message ?? detail.error ?? fallback;
+  }
+
+  return fallback;
 }
 
 function withoutClientOptions(options) {
