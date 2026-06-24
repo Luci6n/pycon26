@@ -23,16 +23,13 @@ class PathForgeApiTest(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
 
-    def test_roles_endpoint_exposes_domain_neutral_roles(self):
-        response = self.client.get("/api/roles")
+    def test_dataset_roles_endpoint_exposes_official_roles(self):
+        response = self.client.get("/api/datasets/roles", params={"query": "audit", "limit": 20})
 
         self.assertEqual(response.status_code, 200)
         titles = {role["title"] for role in response.json()["roles"]}
 
-        self.assertIn("AI Engineer", titles)
-        self.assertIn("Legal Assistant", titles)
-        self.assertIn("Robotics Engineer", titles)
-        self.assertIn("Graphic Designer", titles)
+        self.assertIn("Audit Manager", titles)
 
     def test_dataset_summary_uses_all_three_skillsfuture_files(self):
         response = self.client.get("/api/datasets/summary")
@@ -160,19 +157,21 @@ class PathForgeApiTest(unittest.TestCase):
         self.assertIn("Python Model Evaluation", payload["text"])
         self.assertGreater(payload["text_character_count"], 0)
 
-    def test_transition_backend_matches_prd_example(self):
+    def test_dataset_transition_backend_uses_official_profiles(self):
         response = self.client.post(
-            "/api/analyze",
-            json={"current_role_id": "backend-developer", "target_role_id": "ai-engineer"},
+            "/api/datasets/analyze",
+            json={"current_role": "associate-software-engineer", "target_role": "data-analyst"},
         )
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
 
-        self.assertEqual(payload["compatibility"], 73)
-        self.assertEqual(payload["difficulty"], "Medium")
-        self.assertEqual(payload["transferable"][:4], ["Python", "APIs", "SQL", "Docker"])
-        self.assertEqual(payload["missing"][0]["name"], "Machine Learning Fundamentals")
+        self.assertEqual(payload["current"]["title"], "Associate Software Engineer")
+        self.assertEqual(payload["target"]["title"], "Data Analyst")
+        self.assertEqual(payload["source"]["normalisation"], "framework + TSC mapping + unique skill vocabulary")
+        self.assertIn("compatibility", payload)
+        self.assertIn("transferable", payload)
+        self.assertIn("missing", payload)
         self.assertGreaterEqual(len(payload["alternatives"]), 3)
         self.assertIn("Dataset overlap", {item["label"] for item in payload["evidence"]})
 
@@ -180,9 +179,12 @@ class PathForgeApiTest(unittest.TestCase):
         response = self.client.post(
             "/api/evidence",
             json={
-                "target_role_id": "ai-engineer",
+                "target_role_id": "data-analyst",
                 "resume_name": "resume.md",
-                "resume_text": "Python APIs SQL Docker Model Evaluation and Responsible AI projects.",
+                "resume_text": (
+                    "Programming and Coding projects with Data Storytelling and Visualisation, "
+                    "Data Collection and Analysis, and Stakeholder Management."
+                ),
                 "github_url": "https://github.com/example/pathforge",
                 "portfolio_links": [
                     "https://portfolio.example/work",
@@ -198,12 +200,12 @@ class PathForgeApiTest(unittest.TestCase):
         self.assertEqual(payload["resume"]["status"], "text parsed")
         self.assertEqual(payload["resume"]["filename"], "resume.md")
         self.assertGreater(payload["resume"]["text_character_count"], 0)
-        self.assertIn("Python APIs SQL Docker", payload["resume"]["excerpt"])
-        self.assertIn("Model Evaluation", payload["resume"]["matched_skills"])
+        self.assertIn("Programming and Coding", payload["resume"]["excerpt"])
+        self.assertIn("Data Storytelling and Visualisation", payload["resume"]["matched_skills"])
         self.assertEqual(payload["repository"]["status"], "captured")
         self.assertEqual(payload["repository"]["owner"], "example")
         self.assertEqual(payload["portfolio"]["status"], "strong evidence base")
-        self.assertIn("Machine Learning Fundamentals", payload["market"]["skills"])
+        self.assertIn("Data Governance", payload["market"]["skills"])
 
     def test_github_profile_live_fetch_returns_repo_language_signals(self):
         payload = [
@@ -237,8 +239,8 @@ class PathForgeApiTest(unittest.TestCase):
 
     def test_unknown_role_returns_404(self):
         response = self.client.post(
-            "/api/analyze",
-            json={"current_role_id": "unknown", "target_role_id": "ai-engineer"},
+            "/api/datasets/analyze",
+            json={"current_role": "unknown", "target_role": "data-analyst"},
         )
 
         self.assertEqual(response.status_code, 404)
