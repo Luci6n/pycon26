@@ -122,6 +122,38 @@ http://127.0.0.1:8010/api/datasets/summary
 http://127.0.0.1:8010/docs
 ```
 
+## Deploy On Vercel
+
+This repo supports a one-project Vercel deployment:
+
+- Vite builds the frontend into `dist/`.
+- `api/index.py` exposes the FastAPI backend as a Vercel Python function.
+- `vercel.json` routes `/api/*`, `/share/*`, `/docs/*`, `/openapi.json`, and `/redoc` to FastAPI, then falls back all other routes to the React app.
+- `requirements.txt` at the repo root points Vercel to the backend Python dependencies.
+
+Vercel project settings:
+
+```text
+Framework preset: Vite
+Build command: npm run build
+Output directory: dist
+Install command: npm install
+```
+
+Set production/preview environment variables in Vercel:
+
+```text
+EXA_API_KEY=...
+APIFY_API_TOKEN=...
+APIFY_JOB_ACTOR_IDS=MXLpngmVpE8WTESQr,s3dtSTZSZWFtAVLn5,hKByXkMQaC5Qt9UMN
+OPENAI_API_KEY=...
+GITHUB_TOKEN=...
+```
+
+Do not set `VITE_API_BASE_URL` for the one-project Vercel deploy. The frontend will call same-origin `/api`.
+
+Saved accounts and roadmaps use SQLite locally. On Vercel, the backend falls back to `/tmp/pathforge.sqlite3` unless `PATHFORGE_AUTH_DB` is set, so saved data is demo-grade and may reset. Use Postgres/Neon later if saved accounts must be durable.
+
 ## Environment Variables
 
 `.env.example` contains the local template:

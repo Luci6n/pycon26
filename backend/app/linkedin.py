@@ -28,7 +28,17 @@ MAX_CAPTION_CHARS = 1300
 
 
 def public_base_url() -> str:
-    return os.getenv("APP_PUBLIC_BASE_URL", "http://127.0.0.1:8010").rstrip("/")
+    configured_url = os.getenv("APP_PUBLIC_BASE_URL", "").strip()
+    if configured_url:
+        return configured_url.rstrip("/")
+
+    vercel_url = os.getenv("VERCEL_PROJECT_PRODUCTION_URL") or os.getenv("VERCEL_URL")
+    if vercel_url:
+        if vercel_url.startswith(("http://", "https://")):
+            return vercel_url.rstrip("/")
+        return f"https://{vercel_url}".rstrip("/")
+
+    return "http://127.0.0.1:8010"
 
 
 def share_page_url(token: str) -> str:

@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,6 +16,8 @@ def database_path() -> Path:
     configured_path = os.getenv("PATHFORGE_AUTH_DB", "").strip()
     if configured_path:
         return Path(configured_path)
+    if os.getenv("VERCEL"):
+        return Path(os.getenv("TMPDIR") or tempfile.gettempdir()) / "pathforge.sqlite3"
     return Path(__file__).resolve().parents[1] / "pathforge.sqlite3"
 
 
