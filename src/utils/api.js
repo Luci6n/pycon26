@@ -118,6 +118,83 @@ export async function fetchAdminRoadmaps(token) {
   return fetchJson("/api/admin/roadmaps", { token });
 }
 
+export async function generateSchedule(body) {
+  return fetchJson("/api/schedule/generate", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function saveSchedule(token, body) {
+  return fetchJson("/api/schedules", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchScheduleProgress(token, scheduleId) {
+  return fetchJson(`/api/schedules/${scheduleId}/progress`, { token });
+}
+
+export async function completeSession(token, sessionId, content) {
+  return fetchJson(`/api/sessions/${sessionId}/complete`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function generateLinkedInDraft(token, body) {
+  return fetchJson("/api/linkedin/draft", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function createSharePage(token, summary) {
+  return fetchJson("/api/share/create", {
+    method: "POST",
+    token,
+    body: JSON.stringify(summary),
+  });
+}
+
+/**
+ * Downloads a generated schedule as an .ics file (works for Apple + Google Calendar).
+ * Uses a raw fetch because the endpoint returns text/calendar, not JSON.
+ */
+export async function downloadScheduleIcs(title, sessions) {
+  const response = await fetch(`${API_BASE_URL}/api/schedule/export.ics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, sessions }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Calendar export failed: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slugify(title)}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function slugify(value) {
+  const slug = (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "pathforge-schedule";
+}
+
 async function fetchJson(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {

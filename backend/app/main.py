@@ -13,13 +13,15 @@ from .auth import (
     list_saved_roadmaps,
     login_user,
     save_roadmap,
-    user_from_token,
 )
 from .data import DATA_SOURCE, ROLES
 from .dataset_loader import dataset_summary, get_official_role, official_role_profiles, search_official_roles
+from .deps import current_admin, current_user
 from .enrichment import search_learning_resources, validate_market_demand
 from .evidence import analyze_evidence
 from .resume_parser import extract_resume_text
+from .routes_linkedin import router as linkedin_router
+from .routes_schedule import router as schedule_router
 from .scoring import UnknownRoleError, analyze_profiles, analyze_transition, get_role
 
 app = FastAPI(title="PathForge AI API", version="0.1.0")
@@ -90,24 +92,8 @@ class SaveRoadmapRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-def current_user(authorization: str | None = Header(default=None)) -> dict:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Login required for this action.")
-
-    token = authorization.split(" ", 1)[1].strip()
-    user = user_from_token(token)
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired session.")
-
-    return user
-
-
-def current_admin(authorization: str | None = Header(default=None)) -> dict:
-    user = current_user(authorization)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return user
+app.include_router(schedule_router)
+app.include_router(linkedin_router)
 
 
 @app.get("/api/health")
