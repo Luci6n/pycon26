@@ -23,7 +23,8 @@ UNIQUE_SKILLS_FILE = DATASET_DIR / "jobsandskills-skillsfuture-unique-skills-lis
 def dataset_summary() -> dict:
     framework_roles, role_skill_links = read_framework_data()
     mapping = read_mapping()
-    unique_skills = read_unique_skills()
+    skill_descriptions = read_unique_skill_descriptions()
+    unique_skills = set(skill_descriptions)
 
     normalised_pairs = 0
     mapping_by_code = mapping["by_code"]
@@ -54,7 +55,8 @@ def dataset_summary() -> dict:
 def official_role_profiles() -> dict[str, dict]:
     framework_roles, role_skill_links = read_framework_data()
     mapping = read_mapping()
-    unique_skills = read_unique_skills()
+    skill_descriptions = read_unique_skill_descriptions()
+    unique_skills = set(skill_descriptions)
     by_code = mapping["by_code"]
     by_title = mapping["by_title"]
     profiles: dict[str, dict] = {
@@ -65,6 +67,7 @@ def official_role_profiles() -> dict[str, dict]:
             "track": role["track"],
             "description": role["description"],
             "skills": [],
+            "skill_descriptions": {},
             "required": {},
         }
         for title, role in framework_roles.items()
@@ -81,6 +84,9 @@ def official_role_profiles() -> dict[str, dict]:
 
         if unique_skill not in profile["skills"]:
             profile["skills"].append(unique_skill)
+
+        if unique_skill in skill_descriptions:
+            profile["skill_descriptions"][unique_skill] = skill_descriptions[unique_skill]
 
         weight = proficiency_weight(link["proficiency"])
         profile["required"][unique_skill] = max(profile["required"].get(unique_skill, 0), weight)
@@ -199,13 +205,23 @@ def read_mapping() -> dict[str, dict[str, str]]:
 
 
 def read_unique_skills() -> set[str]:
+    return set(read_unique_skill_descriptions())
+
+
+@lru_cache(maxsize=1)
+def read_unique_skill_descriptions() -> dict[str, str]:
     workbook = load_workbook(UNIQUE_SKILLS_FILE, read_only=True, data_only=True)
     sheet = workbook["Unique Skills List"]
-    skills = {
-        clean(row[0])
-        for row in sheet.iter_rows(min_row=2, values_only=True)
-        if row and row[0]
-    }
+    skills = {}
+
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        if not row or not row[0]:
+            continue
+
+        title = clean(row[0])
+        description = clean(row[1])
+        skills[title] = description
+
     workbook.close()
     return skills
 

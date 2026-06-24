@@ -20,6 +20,7 @@ def analyze_profiles(
         key=lambda skill: target_weights[skill],
         reverse=True,
     )
+    skill_descriptions = build_skill_descriptions(current, target, target_skills)
 
     missing = sorted(
         [
@@ -27,6 +28,7 @@ def analyze_profiles(
                 "name": skill,
                 "demand": target_weights[skill],
                 "urgency": urgency_for(target_weights[skill]),
+                "description": skill_descriptions.get(skill, ""),
             }
             for skill in target_skills
             if skill not in current_skills
@@ -73,6 +75,7 @@ def analyze_profiles(
         "target": target,
         "profile": profile["summary"],
         "transferable": transferable,
+        "skill_descriptions": skill_descriptions,
         "missing": missing,
         "compatibility": compatibility,
         "difficulty": difficulty,
@@ -99,6 +102,18 @@ def analyze_pair(current: dict, target: dict) -> dict:
 
 def role_family(role: dict) -> str:
     return role.get("family") or role.get("sector") or "Official Dataset"
+
+
+def build_skill_descriptions(current: dict, target: dict, target_skills: list[str]) -> dict[str, str]:
+    descriptions = {}
+    for role in (target, current):
+        descriptions.update(role.get("skill_descriptions") or {})
+
+    return {
+        skill: descriptions[skill]
+        for skill in target_skills
+        if descriptions.get(skill)
+    }
 
 
 def build_profile_context(current: dict, target: dict, profile_skills: list[str] | None) -> dict:
